@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenStreetMap Markers</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+          var map;
+          var markers = {{ markers|tojson }};
+          var markerLayer = L.layerGroup();
+          var currentZoom = 13;
+          var ws = new WebSocket("ws://localhost:8000/ws"); // Подключаемся к WebSocket
+            ws.onmessage = function(event) {
+              try{
+                   var marker = JSON.parse(event.data)
+                if(marker.latitude && marker.longitude){
+                    var radius = mapRsrpToRadius(marker.rsrp);
+                    var color = mapRsrpToColor(marker.rsrp);
+                  L.circleMarker([marker.latitude, marker.longitude], {
+                         radius: radius,
+                        fillColor: color,
+                        color: color,
+                       weight: 1,
+                        opacity: 0.5,
+                       fillOpacity: 0.5,
+                         rsrp: marker.rsrp
+                    }).addTo(markerLayer).bindPopup("RSRP: " + marker.rsrp);
+                 }
+
+              } catch (e){
+                 console.error("Error parsing JSON:", e);
+               }
+           };
+           function mapRsrpToRadius(rsrp) {
+              var radius = 100 - (rsrp / 2);
+              if (radius < 10) {
+                 radius = 10;
+                }
+                return radius;
+            }
+            function mapRsrpToColor(rsrp) {
+                if (rsrp <= -100) {
+                    return "yellow"; // Зеленый для RSRP <= -100
+                } else {
+                    return "green"; // Желтый для RSRP > -100
+                }
+            }
+             function updateMarkerSizes() {
+                 markerLayer.eachLayer(function (layer) {
+                    if (layer instanceof L.CircleMarker) {
+                        var rsrp = layer.options.rsrp;
+                       var radius = mapRsrpToRadius(rsrp);
+                        var scaleFactor = Math.pow(2, currentZoom - 20);
+                        radius = radius * scaleFactor;
+                        layer.setRadius(radius);
+                    }
+                });
+            }
+         if (markers && markers.length > 0 && markers[0].latitude && markers[0].longitude) {
+             var firstMarker = markers[0];
+             map = L.map('map').setView([firstMarker.latitude, firstMarker.longitude], currentZoom);
+         } else {
+             map = L.map('map').setView([54.95, 82.96], currentZoom);
+          }
+          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+           maxZoom: 19,
+          }).addTo(map);
+        markerLayer.addTo(map);
+          map.on('zoomend', function () {
+             currentZoom = map.getZoom();
+              updateMarkerSizes();
+          });
+
+        function addMarkersGradually(markers, index) {
+            if (index < markers.length) {
+                 var marker = markers[index];
+                  if(marker.latitude && marker.longitude){
+                       var radius = mapRsrpToRadius(marker.rsrp);
+                     var color = mapRsrpToColor(marker.rsrp);
+                     var circleMarker = L.circleMarker([marker.latitude, marker.longitude], {
+                        radius: radius,
+                         fillColor: color,
+                       color: color,
+                         weight: 1,
+                         opacity: 0.5,
+                         fillOpacity: 0.5,
+                         rsrp: marker.rsrp
+                     }).addTo(markerLayer).bindPopup("RSRP: " + marker.rsrp);
+                    }
+
+                     setTimeout(function() {
+                        addMarkersGradually(markers, index + 1);
+                     }, 50);
+             }
+         }
+
+         addMarkersGradually(markers, 0);
+    </script>
+</body>
+</html>
